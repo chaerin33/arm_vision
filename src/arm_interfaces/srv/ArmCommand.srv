@@ -1,8 +1,8 @@
 string action
-int32 object_id
+int32[] object_ids
 string location
 ---
 bool success
-int32 slot
-int32 object_id
+int32[] slots
+int32[] object_ids
 string message

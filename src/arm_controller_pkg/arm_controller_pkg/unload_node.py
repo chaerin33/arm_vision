@@ -14,8 +14,61 @@ ROBOT_IP = "10.0.2.8"
 
 HOME_JOINT_DEG = np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0])
 
-# TCP 좌표 [x, y, z, rx, ry, rz] (mm, degree) - 실측 후 채워넣기
-SLOT_ITPL = {
+# 슬롯별 웨이포인트 (joint, degree) - 실측 후 채워넣기
+# 첫 번째 포인트는 반드시 HOME_JOINT_DEG와 동일해야 역순 복귀 시 홈에 도달함
+SLOT_WAYPOINTS = {
+    1: [
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-35.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([ 53.60, 23.71, 15.87, 3.85, 130.79, 0.0]),
+        np.array([ 67.77, 1.24, 49.43, 4.35, 119.99, -19.94]),
+    ],
+    2: [
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-250.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-265.26, 18.68, 28.51, -2.23, 125.87, 3.60])
+    ],
+    3: [
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-250.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-253.19, 22.98, 22.45, -4.08, 128.11, 14.39]),
+        ],
+    4: [
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-250.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-233.56, 1.26, 52.33, -18.50, 98.90, 28.90]),
+        ],
+    5: [
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-243.08, 9.11, 40.45, 0.0, 130.43, 26.93]),
+    ],
+    6: [
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-260.92, 2.93, 47.34, 0, 129.73, 9.09]),
+    ],
+}
+
+# 인덱스 0~5: 내려놓는 순서에 따라 사용
+DELIVERY_WAYPOINTS = {
+    0: [
+        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),  # 실측 후 채우기
+    ],
     1: [
         np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
     ],
@@ -23,25 +76,13 @@ SLOT_ITPL = {
         np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
     ],
     3: [
+
         np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
     ],
     4: [
         np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
     ],
     5: [
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-    ],
-    6: [
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-    ],
-}
-
-# TCP 좌표 [x, y, z, rx, ry, rz] (mm, degree) - 실측 후 채워넣기
-DESTINATION_ITPL = {
-    "WORKBENCH": [
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-    ],
-    "CUSTOMER": [
         np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
     ],
 }
@@ -117,29 +158,47 @@ class UnloadNode(Node):
         self.robot.wait_for_move_finished(self.rc)
 
     def move_to_slot(self, slot):
-        waypoints = SLOT_ITPL.get(slot)
-        if not waypoints:
+        waypoints = SLOT_WAYPOINTS.get(slot)
+        if waypoints is None:
             self.get_logger().error(f'[UNLOAD] no waypoints for slot={slot}')
             return False
-        self.robot.move_itpl_clear(self.rc)
         for wp in waypoints:
-            self.robot.move_itpl_add(self.rc, wp, L_VEL)
-        self.robot.move_itpl_run(self.rc, L_ACC, rb.MoveITPLOption.Intended)
-        self.wait_move()
+            self.robot.move_j(self.rc, wp, J_VEL, J_ACC)
+            self.wait_move()
         self.get_logger().info(f'[UNLOAD] slot={slot} reached')
         return True
 
-    def move_to_destination(self, location):
-        waypoints = DESTINATION_ITPL.get(location.upper())
-        if not waypoints:
-            self.get_logger().error(f'[UNLOAD] no waypoints for location={location}')
+    def return_from_slot(self, slot):
+        waypoints = SLOT_WAYPOINTS.get(slot)
+        if waypoints is None:
+            self.get_logger().error(f'[UNLOAD] no waypoints for slot={slot}')
             return False
-        self.robot.move_itpl_clear(self.rc)
+        for wp in reversed(waypoints):
+            self.robot.move_j(self.rc, wp, J_VEL, J_ACC)
+            self.wait_move()
+        self.get_logger().info(f'[UNLOAD] returned from slot={slot}')
+        return True
+
+    def move_to_delivery(self, delivery_idx):
+        waypoints = DELIVERY_WAYPOINTS.get(delivery_idx)
+        if waypoints is None:
+            self.get_logger().error(f'[UNLOAD] no waypoints for delivery_idx={delivery_idx}')
+            return False
         for wp in waypoints:
-            self.robot.move_itpl_add(self.rc, wp, L_VEL)
-        self.robot.move_itpl_run(self.rc, L_ACC, rb.MoveITPLOption.Intended)
-        self.wait_move()
-        self.get_logger().info(f'[UNLOAD] {location} reached')
+            self.robot.move_j(self.rc, wp, J_VEL, J_ACC)
+            self.wait_move()
+        self.get_logger().info(f'[UNLOAD] delivery position {delivery_idx} reached')
+        return True
+
+    def return_from_delivery(self, delivery_idx):
+        waypoints = DELIVERY_WAYPOINTS.get(delivery_idx)
+        if waypoints is None:
+            self.get_logger().error(f'[UNLOAD] no waypoints for delivery_idx={delivery_idx}')
+            return False
+        for wp in reversed(waypoints):
+            self.robot.move_j(self.rc, wp, J_VEL, J_ACC)
+            self.wait_move()
+        self.get_logger().info(f'[UNLOAD] returned from delivery position {delivery_idx}')
         return True
 
     # --- UNLOAD 시퀀스 ---
@@ -147,31 +206,32 @@ class UnloadNode(Node):
     def arm_command_cb(self, request, response):
         if request.action.upper() != 'UNLOAD':
             response.success = False
-            response.slot = -1
-            response.object_id = -1
+            response.slots = []
+            response.object_ids = []
             response.message = f'unknown action: {request.action}'
             return response
 
         with self._busy_lock:
             if self._busy:
                 response.success = False
-                response.slot = -1
-                response.object_id = -1
+                response.slots = []
+                response.object_ids = []
                 response.message = 'busy'
                 return response
             self._busy = True
 
         try:
-            result = self.sequence_unload(request.object_id, request.location)
-            response.success = result['success']
-            response.slot = result['slot']
-            response.object_id = result['object_id']
-            response.message = result['message']
+            results = self.sequence_unload_multi(list(request.object_ids))
+            success_all = all(r['success'] for r in results)
+            response.success = success_all
+            response.slots = [r['slot'] for r in results]
+            response.object_ids = [r['object_id'] for r in results]
+            response.message = ', '.join(r['message'] for r in results)
         except Exception as e:
             self.get_logger().error(f'[UNLOAD] exception: {e}')
             response.success = False
-            response.slot = -1
-            response.object_id = -1
+            response.slots = []
+            response.object_ids = []
             response.message = str(e)
         finally:
             with self._busy_lock:
@@ -179,14 +239,24 @@ class UnloadNode(Node):
 
         return response
 
-    def sequence_unload(self, object_id, location):
-        self.get_logger().info(f'[UNLOAD START] object_id={object_id}, location={location}')
+    def sequence_unload_multi(self, object_ids):
+        results = []
+        for idx, object_id in enumerate(object_ids):
+            result = self.sequence_unload(object_id, idx)
+            results.append(result)
+            if not result['success']:
+                self.get_logger().error(f'[UNLOAD] failed at object_id={object_id}, stopping')
+                break
+        return results
+
+    def sequence_unload(self, object_id, delivery_idx):
+        self.get_logger().info(f'[UNLOAD START] object_id={object_id}, delivery_idx={delivery_idx}')
 
         # 1. 슬롯 확인
         res = self.call_cargo('FIND_OBJECT', object_id=object_id)
         if not res or not res.success:
             self.get_logger().error(f'[UNLOAD] object_id={object_id} not found in cargo')
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'object not found'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': f'object not found: {object_id}'}
         slot = res.slot
         self.get_logger().info(f'[CARGO] object found: slot={slot}')
 
@@ -194,10 +264,10 @@ class UnloadNode(Node):
         self.call_gripper(False)
         self.go_home()
 
-        # 3. 슬롯으로 ITPL 이동
+        # 3. 웨이포인트 순서대로 슬롯으로 이동
         if not self.move_to_slot(slot):
             self.go_home()
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'move to slot failed'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'move to slot failed'}
 
         # 4. Z 하강
         self.robot.move_l_rel(
@@ -212,8 +282,8 @@ class UnloadNode(Node):
                 self.rc, np.array([0.0, 0.0, -100.0, 0.0, 0.0, 0.0]),
                 L_VEL, L_ACC, rb.ReferenceFrame.Tool)
             self.wait_move()
-            self.go_home()
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'grip failed'}
+            self.return_from_slot(slot)
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'grip failed'}
 
         # 6. Z 상승
         self.robot.move_l_rel(
@@ -221,13 +291,13 @@ class UnloadNode(Node):
             L_VEL, L_ACC, rb.ReferenceFrame.Tool)
         self.wait_move()
 
-        # 7. 홈 복귀
-        self.go_home()
+        # 7. 웨이포인트 역순으로 홈 복귀
+        self.return_from_slot(slot)
 
-        # 8. 목적지로 ITPL 이동
-        if not self.move_to_destination(location):
+        # 8. 배달 위치로 이동 (delivery_idx번째 자리)
+        if not self.move_to_delivery(delivery_idx):
             self.go_home()
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'move to destination failed'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'move to delivery failed'}
 
         # 9. Z 하강 → open → Z 상승
         self.robot.move_l_rel(
@@ -240,12 +310,12 @@ class UnloadNode(Node):
             L_VEL, L_ACC, rb.ReferenceFrame.Tool)
         self.wait_move()
 
-        # 10. 홈 복귀
-        self.go_home()
+        # 10. 웨이포인트 역순으로 홈 복귀
+        self.return_from_delivery(delivery_idx)
 
         # 11. 카고 기록 삭제
         self.call_cargo('CLEAR', slot=slot)
-        self.get_logger().info(f'[UNLOAD DONE] object_id={object_id}, slot={slot}, location={location}')
+        self.get_logger().info(f'[UNLOAD DONE] object_id={object_id}, slot={slot}, delivery_idx={delivery_idx}')
         return {'success': True, 'slot': slot, 'object_id': object_id, 'message': 'unload success'}
 
 

@@ -14,25 +14,51 @@ ROBOT_IP = "10.0.2.8"
 
 HOME_JOINT_DEG = np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0])
 
-# TCP 좌표 [x, y, z, rx, ry, rz] (mm, degree) - 실측 후 채워넣기
-SLOT_ITPL = {
+SLOT_WAYPOINTS = {
     1: [
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-35.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([ 53.60, 23.71, 15.87, 3.85, 130.79, 0.0]),
+        np.array([ 67.77, 1.24, 49.43, 4.35, 119.99, -19.94]),
     ],
     2: [
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-250.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-265.26, 18.68, 28.51, -2.23, 125.87, 3.60])
     ],
     3: [
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-    ],
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-250.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-253.19, 22.98, 22.45, -4.08, 128.11, 14.39]),
+        ],
     4: [
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-    ],
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-250.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-233.56, 1.26, 52.33, -18.50, 98.90, 28.90]),
+        ],
     5: [
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-243.08, 9.11, 40.45, 0.0, 130.43, 26.93]),
     ],
     6: [
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
+        np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
+        np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
+        np.array([-260.92, 2.93, 47.34, 0, 129.73, 9.09]),
     ],
 }
 
@@ -136,16 +162,25 @@ class LoadNode(Node):
         self.robot.wait_for_move_finished(self.rc)
 
     def move_to_slot(self, slot):
-        waypoints = SLOT_ITPL.get(slot)
-        if not waypoints:
+        waypoints = SLOT_WAYPOINTS.get(slot)
+        if waypoints is None:
             self.get_logger().error(f'[LOAD] no waypoints for slot={slot}')
             return False
-        self.robot.move_itpl_clear(self.rc)
         for wp in waypoints:
-            self.robot.move_itpl_add(self.rc, wp, L_VEL)
-        self.robot.move_itpl_run(self.rc, L_ACC, rb.MoveITPLOption.Intended)
-        self.wait_move()
+            self.robot.move_j(self.rc, wp, J_VEL, J_ACC)
+            self.wait_move()
         self.get_logger().info(f'[LOAD] slot={slot} reached')
+        return True
+
+    def return_from_slot(self, slot):
+        waypoints = SLOT_WAYPOINTS.get(slot)
+        if waypoints is None:
+            self.get_logger().error(f'[LOAD] no waypoints for slot={slot}')
+            return False
+        for wp in reversed(waypoints):
+            self.robot.move_j(self.rc, wp, J_VEL, J_ACC)
+            self.wait_move()
+        self.get_logger().info(f'[LOAD] returned from slot={slot}')
         return True
 
     # --- LOAD 시퀀스 ---
@@ -153,31 +188,32 @@ class LoadNode(Node):
     def arm_command_cb(self, request, response):
         if request.action.upper() != 'LOAD':
             response.success = False
-            response.slot = -1
-            response.object_id = -1
+            response.slots = []
+            response.object_ids = []
             response.message = f'unknown action: {request.action}'
             return response
 
         with self._busy_lock:
             if self._busy:
                 response.success = False
-                response.slot = -1
-                response.object_id = -1
+                response.slots = []
+                response.object_ids = []
                 response.message = 'busy'
                 return response
             self._busy = True
 
         try:
-            result = self.sequence_load(request.object_id)
-            response.success = result['success']
-            response.slot = result['slot']
-            response.object_id = result['object_id']
-            response.message = result['message']
+            results = self.sequence_load_multi(list(request.object_ids))
+            success_all = all(r['success'] for r in results)
+            response.success = success_all
+            response.slots = [r['slot'] for r in results]
+            response.object_ids = [r['object_id'] for r in results]
+            response.message = ', '.join(r['message'] for r in results)
         except Exception as e:
             self.get_logger().error(f'[LOAD] exception: {e}')
             response.success = False
-            response.slot = -1
-            response.object_id = -1
+            response.slots = []
+            response.object_ids = []
             response.message = str(e)
         finally:
             with self._busy_lock:
@@ -185,11 +221,21 @@ class LoadNode(Node):
 
         return response
 
+    def sequence_load_multi(self, object_ids):
+        results = []
+        for object_id in object_ids:
+            result = self.sequence_load(object_id)
+            results.append(result)
+            if not result['success']:
+                self.get_logger().error(f'[LOAD] failed at object_id={object_id}, stopping')
+                break
+        return results
+
     def sequence_load(self, object_id):
         target_color = MATERIAL_NAMES.get(object_id)
         if not target_color:
             self.get_logger().error(f'[LOAD] unknown object_id: {object_id}')
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'unknown object_id'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': f'unknown object_id={object_id}'}
 
         self.get_logger().info(f'[LOAD START] object_id={object_id}, target={target_color}')
 
@@ -197,7 +243,7 @@ class LoadNode(Node):
         res = self.call_cargo('FIND_EMPTY', object_id=object_id)
         if not res or not res.success:
             self.get_logger().error('[LOAD] no empty slot')
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'no empty slot'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'no empty slot'}
         slot = res.slot
         self.get_logger().info(f'[CARGO] empty slot: {slot}')
 
@@ -209,7 +255,7 @@ class LoadNode(Node):
         p = self.call_vision(target_color)
         if not p:
             self.get_logger().error('[LOAD] vision failed at YAW step')
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'vision failed at YAW'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'vision failed at YAW'}
 
         if abs(p.yaw) >= 0.01:
             target_j = HOME_JOINT_DEG.copy()
@@ -223,7 +269,7 @@ class LoadNode(Node):
         if not p:
             self.get_logger().error('[LOAD] vision failed at XY step')
             self.go_home()
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'vision failed at XY'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'vision failed at XY'}
 
         dx = -(p.x * 1000.0) + CAM_Y_OFF
         dy = (p.y * 1000.0) + CAM_X_OFF
@@ -238,7 +284,7 @@ class LoadNode(Node):
         if not p:
             self.get_logger().error('[LOAD] vision failed at Z step')
             self.go_home()
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'vision failed at Z'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'vision failed at Z'}
 
         z_move = (p.z * 1000.0) + Z_OFFSET
         self.robot.move_l_rel(
@@ -259,7 +305,7 @@ class LoadNode(Node):
                 L_VEL, L_ACC, rb.ReferenceFrame.Tool)
             self.wait_move()
             self.go_home()
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'grip failed'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'grip failed'}
 
         # 7. Z 상승 후 홈
         self.robot.move_l_rel(
@@ -268,11 +314,11 @@ class LoadNode(Node):
         self.wait_move()
         self.go_home()
 
-        # 8. 슬롯으로 ITPL 이동
+        # 8. 웨이포인트 순서대로 슬롯으로 이동
         if not self.move_to_slot(slot):
             self.get_logger().error(f'[LOAD] move to slot failed')
             self.go_home()
-            return {'success': False, 'slot': -1, 'object_id': -1, 'message': 'move to slot failed'}
+            return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'move to slot failed'}
 
         # 9. Z 하강 → open → Z 상승
         self.robot.move_l_rel(
@@ -285,13 +331,13 @@ class LoadNode(Node):
             L_VEL, L_ACC, rb.ReferenceFrame.Tool)
         self.wait_move()
 
-        # 10. 홈 복귀
-        self.go_home()
+        # 10. 웨이포인트 역순으로 홈 복귀
+        self.return_from_slot(slot)
 
         # 11. 카고 기록
         self.call_cargo('SET', slot=slot, object_id=object_id)
         self.get_logger().info(f'[LOAD DONE] object_id={object_id}, slot={slot}')
-        return {'success': True, 'slot': slot, 'object_id': object_id, 'message': 'load success'}
+        return {'success': True, 'slot': slot, 'object_id': object_id, 'message': f'load success'}
 
 
 def main(args=None):

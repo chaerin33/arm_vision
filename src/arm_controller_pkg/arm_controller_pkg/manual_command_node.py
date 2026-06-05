@@ -8,12 +8,12 @@ class ManualCommandNode(Node):
         super().__init__('manual_command_node')
         self.client = self.create_client(ArmCommand, '/arm_command')
         self.get_logger().info('[MANUAL] manual_command_node started')
-        self.get_logger().info('[MANUAL] commands: load / unload / status / exit')
+        self.get_logger().info('[MANUAL] commands: load / unload / exit')
 
-    def call_arm(self, action, object_id, location):
+    def call_arm(self, action, object_ids, location):
         req = ArmCommand.Request()
         req.action = action
-        req.object_id = object_id
+        req.object_ids = object_ids
         req.location = location
 
         while not self.client.wait_for_service(timeout_sec=1.0):
@@ -24,7 +24,11 @@ class ManualCommandNode(Node):
         res = future.result()
 
         if res:
-            self.get_logger().info(f'[MANUAL] result: success={res.success}, message={res.message}')
+            self.get_logger().info(
+                f'[MANUAL] result: success={res.success}, '
+                f'slots={list(res.slots)}, object_ids={list(res.object_ids)}, '
+                f'message={res.message}'
+            )
         else:
             self.get_logger().error('[MANUAL] no response')
 
@@ -34,7 +38,8 @@ class ManualCommandNode(Node):
         print('=' * 40)
         print('object_id: 1=2x2_red  2=2x2_green  3=2x2_blue  4=2x2_yellow')
         print('           5=4x2_red  6=4x2_green  7=4x2_blue  8=4x2_yellow')
-        print('location:  STORAGE / WORKBENCH / CUSTOMER')
+        print('location:  WORKBENCH / CUSTOMER')
+        print('여러 개 입력 시 쉼표로 구분: 1,3,5')
         print('=' * 40)
 
         while rclpy.ok():
@@ -45,14 +50,15 @@ class ManualCommandNode(Node):
                     break
 
                 elif cmd == 'load':
-                    object_id = int(input('object_id (1-8): ').strip())
-                    location = input('location (STORAGE): ').strip().upper() or 'STORAGE'
-                    self.call_arm('LOAD', object_id, location)
+                    raw = input('object_id (쉼표 구분, 예: 1,3,5): ').strip()
+                    object_ids = [int(x.strip()) for x in raw.split(',')]
+                    self.call_arm('LOAD', object_ids, '')
 
                 elif cmd == 'unload':
-                    object_id = int(input('object_id (1-8): ').strip())
+                    raw = input('object_id (쉼표 구분, 예: 1,3): ').strip()
+                    object_ids = [int(x.strip()) for x in raw.split(',')]
                     location = input('location (WORKBENCH/CUSTOMER): ').strip().upper()
-                    self.call_arm('UNLOAD', object_id, location)
+                    self.call_arm('UNLOAD', object_ids, location)
 
                 elif cmd == '':
                     continue
