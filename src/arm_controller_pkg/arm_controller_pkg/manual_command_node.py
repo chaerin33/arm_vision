@@ -10,10 +10,13 @@ class ManualCommandNode(Node):
         self.get_logger().info('[MANUAL] manual_command_node started')
         self.get_logger().info('[MANUAL] commands: load / unload / exit')
 
-    def call_arm(self, action, object_ids, location):
+    def call_arm(self, action, object_ids, location=''):
         req = ArmCommand.Request()
         req.action = action
         req.object_ids = object_ids
+
+        # 현재 load/unload 노드는 location 값을 사용하지 않는다.
+        # 물건을 항상 같은 위치에 내려놓을 것이므로 빈 문자열로 고정한다.
         req.location = location
 
         while not self.client.wait_for_service(timeout_sec=1.0):
@@ -32,14 +35,20 @@ class ManualCommandNode(Node):
         else:
             self.get_logger().error('[MANUAL] no response')
 
+    def parse_object_ids(self, raw):
+        object_ids = [int(x.strip()) for x in raw.split(',') if x.strip()]
+        if not object_ids:
+            raise ValueError('empty object_id list')
+        return object_ids
+
     def run(self):
         print('\n' + '=' * 40)
         print('ARM Manual Command Node')
         print('=' * 40)
         print('object_id: 1=2x2_red  2=2x2_green  3=2x2_blue  4=2x2_yellow')
         print('           5=4x2_red  6=4x2_green  7=4x2_blue  8=4x2_yellow')
-        print('location:  WORKBENCH / CUSTOMER')
         print('여러 개 입력 시 쉼표로 구분: 1,3,5')
+        print('unload는 location 입력 없이 항상 같은 위치로 내려놓음')
         print('=' * 40)
 
         while rclpy.ok():
@@ -51,14 +60,13 @@ class ManualCommandNode(Node):
 
                 elif cmd == 'load':
                     raw = input('object_id (쉼표 구분, 예: 1,3,5): ').strip()
-                    object_ids = [int(x.strip()) for x in raw.split(',')]
-                    self.call_arm('LOAD', object_ids, '')
+                    object_ids = self.parse_object_ids(raw)
+                    self.call_arm('LOAD', object_ids)
 
                 elif cmd == 'unload':
                     raw = input('object_id (쉼표 구분, 예: 1,3): ').strip()
-                    object_ids = [int(x.strip()) for x in raw.split(',')]
-                    location = input('location (WORKBENCH/CUSTOMER): ').strip().upper()
-                    self.call_arm('UNLOAD', object_ids, location)
+                    object_ids = self.parse_object_ids(raw)
+                    self.call_arm('UNLOAD', object_ids)
 
                 elif cmd == '':
                     continue

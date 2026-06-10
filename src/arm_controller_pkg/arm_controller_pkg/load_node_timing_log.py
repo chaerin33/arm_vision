@@ -2,10 +2,11 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
-from arm_interfaces.srv import ArmCommand, Cargo
+from arm_interfaces.srv import ArmCommand, Cargo, GetTargetPose
 from std_srvs.srv import Trigger
 import rbpodo as rb
 import numpy as np
+import time
 import threading
 
 
@@ -13,9 +14,6 @@ ROBOT_IP = "10.0.2.8"
 
 HOME_JOINT_DEG = np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0])
 
-# 슬롯별 웨이포인트 (joint, degree)
-# 첫 번째 포인트는 HOME_JOINT_DEG와 동일하게 유지한다.
-# 실제 이동에서는 정방향 첫 waypoint와 역방향 첫 waypoint를 스킵한다.
 SLOT_WAYPOINTS = {
     1: [
         np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
@@ -46,7 +44,7 @@ SLOT_WAYPOINTS = {
         np.array([-145.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
         np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
         np.array([-250.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
-        np.array([-233.56, 1.26, 52.33, -18.50, 98.90, 28.90]),
+        np.array([-246.43, 19.80, 27.31, 1.84, 120.90, 24.45]),
     ],
     5: [
         np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
@@ -64,37 +62,30 @@ SLOT_WAYPOINTS = {
     ],
 }
 
-# 인덱스 0~5: 내려놓는 순서에 따라 사용
-DELIVERY_WAYPOINTS = {
-    0: [
-        np.array([-106.29, 35.41, 98.92, 0.0, 45.67, -16.28]),
-    ],
-    1: [
-        np.array([-91.40, 32.81, 103.23, 0.0, 43.95, -1.39]),
-    ],
-    2: [
-        np.array([-75.10, 34.5, 100.44, 0.0, 45.06, 14.91]),
-    ],
-    3: [
-        np.array([-78.43, 52.72, 68.95, 0.0, 58.33, 11.58]),
-    ],
-    4: [
-        np.array([-90.71, 51.06, 71.88, 0.0, 57.06, -0.7]),
-    ],
-    5: [
-        np.array([-103.28, 53.86, 66.91, 0.0, 59.23, -13.27]),
-    ],
-}
-
-Z_DOWN_MM = 30.0
-Z_UP_MM = -30.0
+CAM_X_OFF = -51.0
+CAM_Y_OFF = 32.0
+Z_DOWN_MM = 20.0
+Z_UP_MM = -20.0
+Z_OFFSET = -85.0
+Z_MARGIN = 20.0
 J_VEL, J_ACC = 255, 255
 L_VEL, L_ACC = 500, 800
 
+MATERIAL_NAMES = {
+    1: "2x2_red",
+    2: "2x2_green",
+    3: "2x2_blue",
+    4: "2x2_yellow",
+    5: "4x2_red",
+    6: "4x2_green",
+    7: "4x2_blue",
+    8: "4x2_yellow",
+}
 
-class UnloadNode(Node):
+
+class LoadNode(Node):
     def __init__(self):
-        super().__init__('unload_node')
+        super().__init__('load_node')
         self.cbg = ReentrantCallbackGroup()
 
         self.robot = None
@@ -107,13 +98,15 @@ class UnloadNode(Node):
             self.robot.set_operation_mode(self.rc, rb.OperationMode.Real)
             self.robot.set_speed_bar(self.rc, 1.0)
             self.robot_ready = True
-            self.get_logger().info('[UNLOAD] robot connected')
+            self.get_logger().info('[LOAD] robot connected')
         except Exception as e:
             self.robot = None
             self.rc = None
             self.robot_ready = False
-            self.get_logger().error(f'[UNLOAD] robot connection error: {e}')
+            self.get_logger().error(f'[LOAD] robot connection error: {e}')
 
+        self.vision_client = self.create_client(
+            GetTargetPose, '/get_target_pose', callback_group=self.cbg)
         self.gripper_open_client = self.create_client(
             Trigger, '/gripper/open', callback_group=self.cbg)
         self.gripper_grip_client = self.create_client(
@@ -126,23 +119,38 @@ class UnloadNode(Node):
         self._busy_lock = threading.Lock()
         self._busy = False
 
-        self.get_logger().info('[UNLOAD] unload_node started')
+        self.get_logger().info('[LOAD] load_node started')
 
     # --- 상태 확인 헬퍼 ---
 
     def is_robot_ready(self):
         if not self.robot_ready or self.robot is None or self.rc is None:
-            self.get_logger().error('[UNLOAD] robot is not connected')
+            self.get_logger().error('[LOAD] robot is not connected')
             return False
         return True
+
+    # --- 시간 로그 헬퍼 ---
+
+    def now(self):
+        return time.perf_counter()
+
+    def log_elapsed(self, label, start_time):
+        elapsed = self.now() - start_time
+        self.get_logger().info(f'[TIME] {label}: {elapsed:.3f}s')
+        return self.now()
 
     # --- 서비스 호출 헬퍼 ---
 
     def call_service(self, client, request, timeout=10.0):
-        """Call a ROS2 service from inside callbacks without nested spinning."""
+        """Call a ROS2 service from inside callbacks without nested spinning.
+
+        This node is expected to run under MultiThreadedExecutor with a
+        ReentrantCallbackGroup. The current callback thread waits on an Event,
+        while another executor thread can process the service response.
+        """
         try:
             if not client.wait_for_service(timeout_sec=1.0):
-                self.get_logger().error(f'[UNLOAD] service unavailable: {client.srv_name}')
+                self.get_logger().error(f'[LOAD] service unavailable: {client.srv_name}')
                 return None
 
             future = client.call_async(request)
@@ -150,13 +158,25 @@ class UnloadNode(Node):
             future.add_done_callback(lambda _: done_event.set())
 
             if not done_event.wait(timeout=timeout):
-                self.get_logger().error(f'[UNLOAD] service timeout: {client.srv_name}')
+                self.get_logger().error(f'[LOAD] service timeout: {client.srv_name}')
                 return None
 
             return future.result()
         except Exception as e:
-            self.get_logger().error(f'[UNLOAD] service call failed: {client.srv_name}: {e}')
+            self.get_logger().error(f'[LOAD] service call failed: {client.srv_name}: {e}')
             return None
+
+    def call_vision(self, target_color, retries=3):
+        for i in range(retries):
+            req = GetTargetPose.Request()
+            req.target_color = target_color
+            req.target_size = ""
+            res = self.call_service(self.vision_client, req)
+            if res and res.success:
+                return res
+            self.get_logger().warn(f'[LOAD] vision retry {i + 1}/{retries}')
+            time.sleep(0.5)
+        return None
 
     def call_gripper(self, grip: bool):
         client = self.gripper_grip_client if grip else self.gripper_open_client
@@ -182,22 +202,27 @@ class UnloadNode(Node):
         if not self.is_robot_ready():
             return False
         try:
+            t0 = self.now()
             result = self.robot.wait_for_move_finished(self.rc, timeout=timeout)
+            self.log_elapsed(f'wait_for_move_finished {label}', t0)
             if result is False:
-                self.get_logger().error(f'[UNLOAD] {label} wait returned False')
+                self.get_logger().error(f'[LOAD] {label} wait returned False')
                 return False
             return True
         except Exception as e:
-            self.get_logger().error(f'[UNLOAD] {label} wait failed: {e}')
+            self.get_logger().error(f'[LOAD] {label} wait failed: {e}')
             return False
 
     def move_j_checked(self, joints_deg, label='move_j', timeout=10.0):
         if not self.is_robot_ready():
             return False
         try:
+            t0 = self.now()
+            self.get_logger().info(f'[TIME] command start {label}')
             self.robot.move_j(self.rc, joints_deg, J_VEL, J_ACC)
+            self.log_elapsed(f'command sent {label}', t0)
         except Exception as e:
-            self.get_logger().error(f'[UNLOAD] {label} command failed: {e}')
+            self.get_logger().error(f'[LOAD] {label} command failed: {e}')
             return False
         return self.wait_move(timeout=timeout, label=label)
 
@@ -205,7 +230,8 @@ class UnloadNode(Node):
         if not self.is_robot_ready():
             return False
         try:
-            self.get_logger().info(f'[UNLOAD] command start {label}: {delta}')
+            t0 = self.now()
+            self.get_logger().info(f'[TIME] command start {label}')
             self.robot.move_l_rel(
                 self.rc,
                 np.array(delta, dtype=float),
@@ -213,13 +239,11 @@ class UnloadNode(Node):
                 L_ACC,
                 rb.ReferenceFrame.Tool,
             )
+            self.log_elapsed(f'command sent {label}', t0)
         except Exception as e:
-            self.get_logger().error(f'[UNLOAD] {label} command failed: {e}')
+            self.get_logger().error(f'[LOAD] {label} command failed: {e}')
             return False
-        ok = self.wait_move(timeout=timeout, label=label)
-        if ok:
-            self.get_logger().info(f'[UNLOAD] command done {label}')
-        return ok
+        return self.wait_move(timeout=timeout, label=label)
 
     def go_home(self):
         return self.move_j_checked(HOME_JOINT_DEG, label='go_home')
@@ -227,73 +251,60 @@ class UnloadNode(Node):
     def move_to_slot(self, slot):
         waypoints = SLOT_WAYPOINTS.get(slot)
         if waypoints is None:
-            self.get_logger().error(f'[UNLOAD] no waypoints for slot={slot}')
+            self.get_logger().error(f'[LOAD] no waypoints for slot={slot}')
             return False
 
-        # 로드 코드와 동일하게 정방향 첫 waypoint는 HOME_JOINT_DEG라서 스킵한다.
+        # 정방향 첫 번째 waypoint는 HOME_JOINT_DEG라서 스킵한다.
+        # 물체를 집은 직후 이미 home 근처에서 lift가 끝난 상태이므로,
+        # 불필요한 첫 move_j 대기 시간을 줄이기 위한 처리다.
         move_waypoints = waypoints[1:]
 
+        self.get_logger().info(f'[TIME] move_to_slot({slot}) start, skip forward wp1')
+        t_move_start = self.now()
+
         for idx, wp in enumerate(move_waypoints, start=2):
+            t_wp = self.now()
+            self.get_logger().info(f'[TIME] move_to_slot({slot}) wp{idx} start')
             if not self.move_j_checked(wp, label=f'move_to_slot({slot}) wp{idx}'):
                 return False
+            self.log_elapsed(f'move_to_slot({slot}) wp{idx} total', t_wp)
 
-        self.get_logger().info(f'[UNLOAD] slot={slot} reached')
+        self.log_elapsed(f'move_to_slot({slot}) total', t_move_start)
+        self.get_logger().info(f'[LOAD] slot={slot} reached')
         return True
 
     def return_from_slot(self, slot):
         waypoints = SLOT_WAYPOINTS.get(slot)
         if waypoints is None:
-            self.get_logger().error(f'[UNLOAD] no waypoints for slot={slot}')
+            self.get_logger().error(f'[LOAD] no waypoints for slot={slot}')
             return False
 
-        # 로드 코드에서 문제가 되었던 부분과 동일하다.
-        # 역방향 첫 waypoint는 현재 슬롯 최종 자세이므로 스킵한다.
+        # 역방향 첫 번째 waypoint는 방금 도착했던 슬롯 최종 자세라서 스킵한다.
+        # 같은 자세로 다시 move_j를 보내면 wait_for_move_finished가 timeout까지
+        # 걸릴 수 있으므로 바로 다음 복귀 waypoint부터 이동한다.
         return_waypoints = list(reversed(waypoints))[1:]
 
+        self.get_logger().info(f'[TIME] return_from_slot({slot}) start, skip reverse wp1')
+        t_return_start = self.now()
+
         for idx, wp in enumerate(return_waypoints, start=2):
+            t_wp = self.now()
+            self.get_logger().info(f'[TIME] return_from_slot({slot}) wp{idx} start')
             if not self.move_j_checked(wp, label=f'return_from_slot({slot}) wp{idx}'):
                 return False
+            self.log_elapsed(f'return_from_slot({slot}) wp{idx} total', t_wp)
 
-        self.get_logger().info(f'[UNLOAD] returned from slot={slot}')
+        self.log_elapsed(f'return_from_slot({slot}) total', t_return_start)
+        self.get_logger().info(f'[LOAD] returned from slot={slot}')
         return True
 
-    def move_to_delivery(self, delivery_idx):
-        waypoints = DELIVERY_WAYPOINTS.get(delivery_idx)
-        if waypoints is None:
-            self.get_logger().error(f'[UNLOAD] no waypoints for delivery_idx={delivery_idx}')
-            return False
-
-        for idx, wp in enumerate(waypoints, start=1):
-            if not self.move_j_checked(wp, label=f'move_to_delivery({delivery_idx}) wp{idx}'):
-                return False
-
-        self.get_logger().info(f'[UNLOAD] delivery position {delivery_idx} reached')
-        return True
-
-    def return_from_delivery(self, delivery_idx):
-        waypoints = DELIVERY_WAYPOINTS.get(delivery_idx)
-        if waypoints is None:
-            self.get_logger().error(f'[UNLOAD] no waypoints for delivery_idx={delivery_idx}')
-            return False
-
-        # delivery 경로가 여러 waypoint인 경우에는 현재 delivery 최종 자세를 스킵한다.
-        # 현재 placeholder처럼 waypoint가 1개뿐이면 기존 동작을 유지한다.
-        return_waypoints = list(reversed(waypoints))[1:] if len(waypoints) > 1 else list(reversed(waypoints))
-
-        for idx, wp in enumerate(return_waypoints, start=1):
-            if not self.move_j_checked(wp, label=f'return_from_delivery({delivery_idx}) wp{idx}'):
-                return False
-
-        self.get_logger().info(f'[UNLOAD] returned from delivery position {delivery_idx}')
-        return True
-
-    # --- UNLOAD 시퀀스 ---
+    # --- LOAD 시퀀스 ---
 
     def arm_command_cb(self, request, response):
         response.slots = []
         response.object_ids = []
 
-        if request.action.upper() != 'UNLOAD':
+        if request.action.upper() != 'LOAD':
             response.success = False
             response.message = f'unknown action: {request.action}'
             return response
@@ -311,14 +322,14 @@ class UnloadNode(Node):
             self._busy = True
 
         try:
-            results = self.sequence_unload_multi(list(request.object_ids))
+            results = self.sequence_load_multi(list(request.object_ids))
             success_all = bool(results) and all(r['success'] for r in results)
             response.success = success_all
             response.slots = [r['slot'] for r in results]
             response.object_ids = [r['object_id'] for r in results]
             response.message = ', '.join(r['message'] for r in results)
         except Exception as e:
-            self.get_logger().error(f'[UNLOAD] exception: {e}')
+            self.get_logger().error(f'[LOAD] exception: {e}')
             response.success = False
             response.slots = []
             response.object_ids = []
@@ -329,17 +340,19 @@ class UnloadNode(Node):
 
         return response
 
-    def sequence_unload_multi(self, object_ids):
+    def sequence_load_multi(self, object_ids):
         results = []
-        for idx, object_id in enumerate(object_ids):
-            result = self.sequence_unload(object_id, idx)
+        for object_id in object_ids:
+            result = self.sequence_load(object_id)
             results.append(result)
             if not result['success']:
-                self.get_logger().error(f'[UNLOAD] failed at object_id={object_id}, stopping')
+                self.get_logger().error(f'[LOAD] failed at object_id={object_id}, stopping')
                 break
         return results
 
-    def sequence_unload(self, object_id, delivery_idx):
+    def sequence_load(self, object_id):
+        t_sequence = self.now()
+
         if not self.is_robot_ready():
             return {
                 'success': False,
@@ -348,22 +361,35 @@ class UnloadNode(Node):
                 'message': 'robot not connected',
             }
 
-        self.get_logger().info(f'[UNLOAD START] object_id={object_id}, delivery_idx={delivery_idx}')
-
-        # 1. 슬롯 확인
-        res = self.call_cargo('FIND_OBJECT', object_id=object_id)
-        if not res or not res.success:
-            self.get_logger().error(f'[UNLOAD] object_id={object_id} not found in cargo')
+        target_color = MATERIAL_NAMES.get(object_id)
+        if not target_color:
+            self.get_logger().error(f'[LOAD] unknown object_id: {object_id}')
             return {
                 'success': False,
                 'slot': -1,
                 'object_id': object_id,
-                'message': f'object not found: {object_id}',
+                'message': f'unknown object_id={object_id}',
+            }
+
+        self.get_logger().info(f'[LOAD START] object_id={object_id}, target={target_color}')
+
+        # 1. 빈 슬롯 확인
+        t0 = self.now()
+        res = self.call_cargo('FIND_EMPTY', object_id=object_id)
+        self.log_elapsed('cargo FIND_EMPTY', t0)
+        if not res or not res.success:
+            self.get_logger().error('[LOAD] no empty slot')
+            return {
+                'success': False,
+                'slot': -1,
+                'object_id': object_id,
+                'message': 'no empty slot',
             }
         slot = res.slot
-        self.get_logger().info(f'[CARGO] object found: slot={slot}')
+        self.get_logger().info(f'[CARGO] empty slot: {slot}')
 
         # 2. 초기화
+        t0 = self.now()
         if not self.call_gripper(False):
             return {
                 'success': False,
@@ -371,6 +397,7 @@ class UnloadNode(Node):
                 'object_id': object_id,
                 'message': 'initial gripper open failed',
             }
+        self.log_elapsed('initial gripper open', t0)
 
         if not self.go_home():
             return {
@@ -380,107 +407,160 @@ class UnloadNode(Node):
                 'message': 'go_home failed',
             }
 
-        # 3. 웨이포인트 순서대로 슬롯으로 이동
-        if not self.move_to_slot(slot):
+        # 3. YAW 보정
+        t0 = self.now()
+        p = self.call_vision(target_color)
+        self.log_elapsed('vision YAW', t0)
+        if not p:
+            self.get_logger().error('[LOAD] vision failed at YAW step')
+            return {
+                'success': False,
+                'slot': -1,
+                'object_id': object_id,
+                'message': 'vision failed at YAW',
+            }
+
+        if abs(p.yaw) >= 0.01:
+            target_j = HOME_JOINT_DEG.copy()
+            target_j[5] += p.yaw
+            if not self.move_j_checked(target_j, label='yaw correction'):
+                return {
+                    'success': False,
+                    'slot': -1,
+                    'object_id': object_id,
+                    'message': 'yaw correction failed',
+                }
+            time.sleep(0.5)
+
+        # 4. XY 이동 (YAW 보정 후 재측정)
+        t0 = self.now()
+        p = self.call_vision(target_color)
+        self.log_elapsed('vision XY', t0)
+        if not p:
+            self.get_logger().error('[LOAD] vision failed at XY step')
             self.go_home()
             return {
                 'success': False,
-                'slot': slot,
+                'slot': -1,
                 'object_id': object_id,
-                'message': 'move to slot failed',
+                'message': 'vision failed at XY',
             }
 
-        # 4. Z 하강
-        self.get_logger().info('[UNLOAD] start slot z down')
+        dx = -(p.x * 1000.0) + CAM_Y_OFF
+        dy = (p.y * 1000.0) + CAM_X_OFF
         if not self.move_l_rel_checked(
-            [0.0, 0.0, Z_DOWN_MM, 0.0, 0.0, 0.0],
-            label='slot z down',
+            [dy, dx, 0.0, 0.0, 0.0, 0.0],
+            label='xy correction',
         ):
             self.go_home()
             return {
                 'success': False,
-                'slot': slot,
+                'slot': -1,
                 'object_id': object_id,
-                'message': 'slot z down failed',
+                'message': 'xy correction failed',
+            }
+        time.sleep(0.5)
+
+        # 5. Z 하강 (XY 보정 후 재측정)
+        t0 = self.now()
+        p = self.call_vision(target_color)
+        self.log_elapsed('vision Z', t0)
+        if not p:
+            self.get_logger().error('[LOAD] vision failed at Z step')
+            self.go_home()
+            return {
+                'success': False,
+                'slot': -1,
+                'object_id': object_id,
+                'message': 'vision failed at Z',
             }
 
-        # 5. 그리퍼 grip
+        z_move = (p.z * 1000.0) + Z_OFFSET
+        if not self.move_l_rel_checked(
+            [0.0, 0.0, z_move - Z_MARGIN, 0.0, 0.0, 0.0],
+            label='z approach',
+        ):
+            self.go_home()
+            return {
+                'success': False,
+                'slot': -1,
+                'object_id': object_id,
+                'message': 'z approach failed',
+            }
+
+        if not self.move_l_rel_checked(
+            [0.0, 0.0, Z_MARGIN, 0.0, 0.0, 0.0],
+            label='z final approach',
+        ):
+            self.go_home()
+            return {
+                'success': False,
+                'slot': -1,
+                'object_id': object_id,
+                'message': 'z final approach failed',
+            }
+        time.sleep(0.5)
+
+        # 6. 그리퍼 grip
+        t0 = self.now()
         if not self.call_gripper(True):
-            self.get_logger().error('[UNLOAD] grip failed')
+            self.get_logger().error('[LOAD] grip failed')
             self.move_l_rel_checked(
                 [0.0, 0.0, -100.0, 0.0, 0.0, 0.0],
                 label='retreat after grip failure',
             )
-            self.return_from_slot(slot)
+            self.go_home()
             return {
                 'success': False,
-                'slot': slot,
+                'slot': -1,
                 'object_id': object_id,
                 'message': 'grip failed',
             }
+        self.log_elapsed('gripper grip', t0)
 
-        # 6. Z 상승
-        self.get_logger().info('[UNLOAD] start slot z up')
+        # 7. Z 상승
         if not self.move_l_rel_checked(
-            [0.0, 0.0, Z_UP_MM, 0.0, 0.0, 0.0],
-            label='slot z up',
+            [0.0, 0.0, -50.0, 0.0, 0.0, 0.0],
+            label='lift after grip',
         ):
-            return {
-                'success': False,
-                'slot': slot,
-                'object_id': object_id,
-                'message': 'slot z up failed',
-            }
-
-        # 7. 슬롯에서 물체를 들어 올렸으므로 cargo 상태를 먼저 비운다.
-        # 이후 복귀 실패가 나도 cargo_manager의 슬롯 상태는 실제 물리 상태와 맞는다.
-        res = self.call_cargo('CLEAR', slot=slot)
-        if not res or not res.success:
-            self.get_logger().error('[UNLOAD] cargo CLEAR failed')
-            return {
-                'success': False,
-                'slot': slot,
-                'object_id': object_id,
-                'message': 'object picked physically but cargo CLEAR failed',
-            }
-
-        # 8. 웨이포인트 역순으로 홈 복귀
-        if not self.return_from_slot(slot):
-            return {
-                'success': False,
-                'slot': slot,
-                'object_id': object_id,
-                'message': 'cargo CLEAR done, but return from slot failed',
-            }
-
-        # 9. 배달 위치로 이동
-        if not self.move_to_delivery(delivery_idx):
             self.go_home()
             return {
                 'success': False,
-                'slot': slot,
+                'slot': -1,
                 'object_id': object_id,
-                'message': 'move to delivery failed',
+                'message': 'lift after grip failed',
             }
 
-        # 10. Z 하강 -> open -> Z 상승
+        # 8. 웨이포인트 순서대로 슬롯으로 이동
+        if not self.move_to_slot(slot):
+            self.get_logger().error('[LOAD] move to slot failed')
+            self.go_home()
+            return {
+                'success': False,
+                'slot': -1,
+                'object_id': object_id,
+                'message': 'move to slot failed',
+            }
+
+        # 9. Z 하강 -> open -> Z 상승
         if not self.move_l_rel_checked(
             [0.0, 0.0, Z_DOWN_MM, 0.0, 0.0, 0.0],
-            label='delivery z down',
+            label='place z down',
         ):
             self.go_home()
             return {
                 'success': False,
                 'slot': slot,
                 'object_id': object_id,
-                'message': 'delivery z down failed',
+                'message': 'place z down failed',
             }
 
+        t0 = self.now()
         if not self.call_gripper(False):
-            self.get_logger().error('[UNLOAD] final gripper open failed')
+            self.get_logger().error('[LOAD] final gripper open failed')
             self.move_l_rel_checked(
                 [0.0, 0.0, Z_UP_MM, 0.0, 0.0, 0.0],
-                label='retreat after delivery open failure',
+                label='retreat after open failure',
             )
             self.go_home()
             return {
@@ -489,42 +569,73 @@ class UnloadNode(Node):
                 'object_id': object_id,
                 'message': 'final gripper open failed',
             }
+        self.log_elapsed('final gripper open', t0)
+
+        # 핵심 확인 구간: place z up -> return_from_slot 사이 시간 측정
+        critical_start = self.now()
+        self.get_logger().info('[TIME] critical before place z up')
 
         if not self.move_l_rel_checked(
             [0.0, 0.0, Z_UP_MM, 0.0, 0.0, 0.0],
-            label='delivery z up',
+            label='place z up',
         ):
             self.go_home()
             return {
                 'success': False,
                 'slot': slot,
                 'object_id': object_id,
-                'message': 'delivery z up failed',
+                'message': 'place z up failed',
             }
 
-        # 11. 웨이포인트 역순으로 홈 복귀
-        if not self.return_from_delivery(delivery_idx):
+        after_place_z_up = self.now()
+        self.get_logger().info(
+            f'[TIME] critical place z up finished: {after_place_z_up - critical_start:.3f}s'
+        )
+        self.get_logger().info('[TIME] critical before return_from_slot')
+
+        if not self.return_from_slot(slot):
             return {
                 'success': False,
                 'slot': slot,
                 'object_id': object_id,
-                'message': 'return from delivery failed',
+                'message': 'return from slot failed',
             }
 
+        after_return = self.now()
         self.get_logger().info(
-            f'[UNLOAD DONE] object_id={object_id}, slot={slot}, delivery_idx={delivery_idx}'
+            f'[TIME] critical return_from_slot finished: {after_return - after_place_z_up:.3f}s'
         )
+        self.get_logger().info(
+            f'[TIME] critical place z up + return total: {after_return - critical_start:.3f}s'
+        )
+
+        # 10. 카고 기록
+        # 사용자가 확인한 기존 현상을 재현하기 위해 cargo SET은 return_from_slot 이후에 둔다.
+        t0 = self.now()
+        res = self.call_cargo('SET', slot=slot, object_id=object_id)
+        self.log_elapsed('cargo SET', t0)
+        if not res or not res.success:
+            self.get_logger().error('[LOAD] cargo SET failed')
+            return {
+                'success': False,
+                'slot': slot,
+                'object_id': object_id,
+                'message': 'loaded physically but cargo SET failed',
+            }
+
+        self.log_elapsed('sequence_load total', t_sequence)
+        self.get_logger().info(f'[LOAD DONE] object_id={object_id}, slot={slot}')
         return {
             'success': True,
             'slot': slot,
             'object_id': object_id,
-            'message': 'unload success',
+            'message': 'load success',
         }
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = UnloadNode()
+    node = LoadNode()
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
     try:
@@ -533,8 +644,7 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

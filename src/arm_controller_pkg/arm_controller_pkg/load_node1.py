@@ -3,7 +3,7 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from arm_interfaces.srv import ArmCommand, Cargo, GetTargetPose
-from std_srvs.srv import SetBool
+from std_srvs.srv import Trigger
 import rbpodo as rb
 import numpy as np
 import time
@@ -37,7 +37,7 @@ SLOT_WAYPOINTS = {
         np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
         np.array([-250.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
         np.array([-253.19, 22.98, 22.45, -4.08, 128.11, 14.39]),
-        ],
+    ],
     4: [
         np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
         np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
@@ -45,7 +45,7 @@ SLOT_WAYPOINTS = {
         np.array([-220.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
         np.array([-250.0, -11.96, 57.40, 0.0, 100.40, 0.0]),
         np.array([-233.56, 1.26, 52.33, -18.50, 98.90, 28.90]),
-        ],
+    ],
     5: [
         np.array([-90.0, 0.0, 90.0, 0.0, 90.0, 0.0]),
         np.array([-90.0, -20.81, 107.71, 0.0, 93.11, 0.0]),
@@ -99,8 +99,10 @@ class LoadNode(Node):
 
         self.vision_client = self.create_client(
             GetTargetPose, '/get_target_pose', callback_group=self.cbg)
-        self.gripper_client = self.create_client(
-            SetBool, '/gripper_control', callback_group=self.cbg)
+        self.gripper_open_client = self.create_client(
+            Trigger, '/gripper/open', callback_group=self.cbg)
+        self.gripper_grip_client = self.create_client(
+            Trigger, '/gripper/grip', callback_group=self.cbg)
         self.cargo_client = self.create_client(
             Cargo, '/cargo', callback_group=self.cbg)
         self.srv = self.create_service(
@@ -115,11 +117,9 @@ class LoadNode(Node):
 
     def call_service(self, client, request, timeout=10.0):
         future = client.call_async(request)
-        start = time.time()
-        while rclpy.ok() and (time.time() - start < timeout):
-            if future.done():
-                return future.result()
-            time.sleep(0.05)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=timeout)
+        if future.done():
+            return future.result()
         self.get_logger().error(f'[LOAD] service timeout: {client.srv_name}')
         return None
 
@@ -136,9 +136,9 @@ class LoadNode(Node):
         return None
 
     def call_gripper(self, grip: bool):
-        req = SetBool.Request()
-        req.data = grip
-        res = self.call_service(self.gripper_client, req, timeout=6.0)
+        client = self.gripper_grip_client if grip else self.gripper_open_client
+        req = Trigger.Request()
+        res = self.call_service(client, req, timeout=6.0)
         if res and res.success:
             self.get_logger().info(f'[GRIPPER] {"grip" if grip else "open"}')
             return True
@@ -156,10 +156,10 @@ class LoadNode(Node):
 
     def go_home(self):
         self.robot.move_j(self.rc, HOME_JOINT_DEG, J_VEL, J_ACC)
-        self.robot.wait_for_move_finished(self.rc)
+        self.robot.wait_for_move_finished(self.rc, timeout=10.0)
 
     def wait_move(self):
-        self.robot.wait_for_move_finished(self.rc)
+        self.robot.wait_for_move_finished(self.rc, timeout=10.0)
 
     def move_to_slot(self, slot):
         waypoints = SLOT_WAYPOINTS.get(slot)
@@ -307,12 +307,11 @@ class LoadNode(Node):
             self.go_home()
             return {'success': False, 'slot': -1, 'object_id': object_id, 'message': 'grip failed'}
 
-        # 7. Z 상승 후 홈
+        # 7. Z 상승 
         self.robot.move_l_rel(
             self.rc, np.array([0.0, 0.0, -50.0, 0.0, 0.0, 0.0]),
             L_VEL, L_ACC, rb.ReferenceFrame.Tool)
         self.wait_move()
-        self.go_home()
 
         # 8. 웨이포인트 순서대로 슬롯으로 이동
         if not self.move_to_slot(slot):
@@ -337,7 +336,7 @@ class LoadNode(Node):
         # 11. 카고 기록
         self.call_cargo('SET', slot=slot, object_id=object_id)
         self.get_logger().info(f'[LOAD DONE] object_id={object_id}, slot={slot}')
-        return {'success': True, 'slot': slot, 'object_id': object_id, 'message': f'load success'}
+        return {'success': True, 'slot': slot, 'object_id': object_id, 'message': 'load success'}
 
 
 def main(args=None):

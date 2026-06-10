@@ -24,7 +24,9 @@ setup(
         'console_scripts': [
             'cargo_manager_node = arm_controller_pkg.cargo_manager_node:main',
             'gripper_node = arm_controller_pkg.gripper_node:main',
-            'load_node = arm_controller_pkg.load_node:main',
+            'load_node1 = arm_controller_pkg.load_node1:main',
+            'load_node2 = arm_controller_pkg.load_node2:main',
+            'load_node_timing_log = arm_controller_pkg.load_node_timing_log:main',
             'unload_node = arm_controller_pkg.unload_node:main',
             'manual_command_node = arm_controller_pkg.manual_command_node:main',
         ],
