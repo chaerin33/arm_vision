@@ -3,12 +3,6 @@ from setuptools import find_packages, setup
 
 package_name = 'vision_pkg'
 
-model_files = [
-    os.path.join('vision_pkg/models', f)
-    for f in os.listdir('vision_pkg/models')
-    if os.path.isfile(os.path.join('vision_pkg/models', f))
-]
-
 setup(
     name=package_name,
     version='0.0.0',

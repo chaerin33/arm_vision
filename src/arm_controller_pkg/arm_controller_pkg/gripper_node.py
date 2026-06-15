@@ -4,24 +4,20 @@ from std_srvs.srv import Trigger
 import serial
 import time
 
-
-GRIPPER_PORT = "/dev/ttyARDUINO"
+GRIPPER_PORT = "/dev/gripper"
 GRIPPER_BAUD = 115200
 
 
 class GripperNode(Node):
     def __init__(self):
         super().__init__('gripper_node')
-
         try:
             self.ser = serial.Serial(GRIPPER_PORT, GRIPPER_BAUD, timeout=1)
             time.sleep(2)
             self.get_logger().info('[GRIPPER] serial connected')
-
             self.clear_serial_buffer()
             self.ser.write(b"open\n")
             self.ser.flush()
-
             self.get_logger().info('[GRIPPER] initialized: open')
         except Exception as e:
             self.ser = None
@@ -47,9 +43,11 @@ class GripperNode(Node):
         while time.time() - start < timeout:
             if self.ser.in_waiting:
                 line = self.ser.readline().decode(errors='ignore').strip()
-                if '[GRIP] Condition satisfied. HOLD.' in line:
+                if '[GRASP] Condition satisfied. HOLD.' in line:
                     return True, 'GRASP_OK'
-                elif '[GRIP] Torque remains ON.' in line:
+                elif '[GRASP] Torque remains ON.' in line:
+                    return True, 'GRASP_OK'
+                elif '[RESULT] GRASP_OK' in line:
                     return True, 'GRASP_OK'
                 elif '[RESULT] GRASP_FAIL' in line:
                     return False, 'GRASP_FAIL'
@@ -65,7 +63,6 @@ class GripperNode(Node):
             self.clear_serial_buffer()
             self.ser.write(b"open\n")
             self.ser.flush()
-
             self.get_logger().info('[GRIPPER] open')
             time.sleep(1.0)
             response.success = True
@@ -85,7 +82,6 @@ class GripperNode(Node):
             self.clear_serial_buffer()
             self.ser.write(b"grip\n")
             self.ser.flush()
-
             self.get_logger().info('[GRIPPER] grip (waiting result...)')
             success, msg = self.wait_grasp_result(timeout=5.0)
             response.success = success

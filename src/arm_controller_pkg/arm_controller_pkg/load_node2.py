@@ -67,7 +67,7 @@ CAM_Y_OFF = 32.0
 Z_DOWN_MM = 20.0
 Z_UP_MM = -20.0
 Z_OFFSET = -85.0
-Z_MARGIN = 20.0
+Z_MARGIN = 40.0
 J_VEL, J_ACC = 255, 255
 L_VEL, L_ACC = 500, 800
 
@@ -133,7 +133,6 @@ class LoadNode(Node):
 
     def call_service(self, client, request, timeout=10.0):
         """Call a ROS2 service from inside callbacks without nested spinning.
-
         This node is expected to run under MultiThreadedExecutor with a
         ReentrantCallbackGroup. The current callback thread waits on an Event,
         while another executor thread can process the service response.
@@ -325,6 +324,8 @@ class LoadNode(Node):
                 'object_id': object_id,
                 'message': f'unknown object_id={object_id}',
             }
+            
+        vision_target = str(object_id)
 
         self.get_logger().info(f'[LOAD START] object_id={object_id}, target={target_color}')
 
@@ -359,7 +360,7 @@ class LoadNode(Node):
             }
 
         # 3. YAW 보정
-        p = self.call_vision(target_color)
+        p = self.call_vision(vision_target)
         if not p:
             self.get_logger().error('[LOAD] vision failed at YAW step')
             return {
@@ -382,7 +383,7 @@ class LoadNode(Node):
             time.sleep(0.5)
 
         # 4. XY 이동 (YAW 보정 후 재측정)
-        p = self.call_vision(target_color)
+        p = self.call_vision(vision_target)
         if not p:
             self.get_logger().error('[LOAD] vision failed at XY step')
             self.go_home()
@@ -409,7 +410,7 @@ class LoadNode(Node):
         time.sleep(0.5)
 
         # 5. Z 하강 (XY 보정 후 재측정)
-        p = self.call_vision(target_color)
+        p = self.call_vision(vision_target)
         if not p:
             self.get_logger().error('[LOAD] vision failed at Z step')
             self.go_home()
