@@ -30,6 +30,7 @@ setup(
             'load_node4 = arm_controller_pkg.load_node4:main',
             'load_node5 = arm_controller_pkg.load_node5:main',
             'load_node6 = arm_controller_pkg.load_node6:main',
+            'amr_robot_node = arm_controller_pkg.amr_robot_node:main',
             'load_node_timing_log = arm_controller_pkg.load_node_timing_log:main',
             'unload_node = arm_controller_pkg.unload_node:main',
             'manual_command_node = arm_controller_pkg.manual_command_node:main',
