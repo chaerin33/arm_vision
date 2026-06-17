@@ -75,4 +75,4 @@ ros2 run arm_controller_pkg unload_node
 ## 주의사항
 
 - 로봇 IP, 그리퍼 시리얼 포트, 모델 파일 경로는 환경에 맞게 수정 필요
-- `SLOT_ITPL`, `DESTINATION_ITPL` 좌표는 실제 로봇에서 측정 후 채워넣어야 함
+
