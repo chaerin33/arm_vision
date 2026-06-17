@@ -54,14 +54,20 @@ ros2 run arm_controller_pkg cargo_manager_node
 ***gripprer***
 ros2 run arm_controller_pkg gripper_node
 
+****load/unload***
+ros2 run arm_controller_pkg amr_robot_node
+
+***vision***
+ros2 run vision_pkg vision_node
+
+──────────────────────────────────────────────────
 ***load***
 ros2 run arm_controller_pkg load_node6
 
 ****unload***
 ros2 run arm_controller_pkg unload_node
+──────────────────────────────────────────────────
 
-***vision***
-ros2 run vision_pkg vision_node
 ```
 
 ---
