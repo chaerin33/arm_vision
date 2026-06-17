@@ -24,7 +24,7 @@ RoboCup SML 대회용 AMR 탑재 로봇팔 제어 시스템. AMR이 목적지에
 
 **manual_command_node** — 터미널에서 직접 load/unload 명령 입력. AMR 없이 단독 테스트용.
 
-**vision_node** — RealSense + YOLO 앙상블로 물체 6D 포즈 반환. `/get_target_pose` 서비스.
+**vision_node** — 배포받은 vision으로 동작 `/get_target_pose` 서비스.
 
 ---
 
@@ -38,6 +38,30 @@ Master / manual_command_node
         ├─ /get_target_pose ──► vision_node
         ├─ /gripper_control ──► gripper_node
         └─ /cargo ───────────► cargo_manager_node
+```
+
+---
+
+## 실행 순서
+
+```
+***명령***
+ros2 run arm_controller_pkg manual_command_node
+
+***carco확인***
+ros2 run arm_controller_pkg cargo_manager_node
+
+***gripprer***
+ros2 run arm_controller_pkg gripper_node
+
+***load***
+ros2 run arm_controller_pkg load_node6
+
+****unload***
+ros2 run arm_controller_pkg unload_node
+
+***vision***
+ros2 run vision_pkg vision_node
 ```
 
 ---
